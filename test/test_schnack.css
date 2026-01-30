@@ -1,0 +1,48 @@
+import { expect } from 'chai';
+import { JSDOM } from 'jsdom';
+import fs from 'fs';
+import path from 'path';
+
+describe('Schnack CSS', () => {
+    let dom;
+    let document;
+
+    before(() => {
+        const cssPath = path.join(__dirname, '../src/embed/schnack.css');
+        const cssContent = fs.readFileSync(cssPath, 'utf-8');
+        dom = new JSDOM(`<!DOCTYPE html><html><head><style>${cssContent}</style></head><body></body></html>`);
+        document = dom.window.document;
+    });
+
+    it('should have circular avatars', () => {
+        const style = document.styleSheets[0];
+        let avatarRule = null;
+
+        for (let i = 0; i < style.cssRules.length; i++) {
+            if (style.cssRules[i].selectorText === '.schnack-avatar') {
+                avatarRule = style.cssRules[i];
+                break;
+            }
+        }
+
+        expect(avatarRule).to.not.be.null;
+        expect(avatarRule.style.borderRadius).to.equal('50%');
+        expect(avatarRule.style.objectFit).to.equal('cover');
+    });
+
+    it('should have existing styles', () => {
+        const style = document.styleSheets[0];
+        let existingRule = null;
+
+        for (let i = 0; i < style.cssRules.length; i++) {
+            if (style.cssRules[i].selectorText === '.schnack-comments') {
+                existingRule = style.cssRules[i];
+                break;
+            }
+        }
+
+        expect(existingRule).to.not.be.null;
+        expect(existingRule.style.margin).to.equal('1em 0');
+        expect(existingRule.style.padding).to.equal('0');
+    });
+});
