@@ -1,50 +1,15 @@
-<% if (data.user) { %>
-    <% if (data.user.admin) { %>
-    <div class="schnack-settings">
-        <button class="schnack-action" data-target="notification" data-class="setting" data-action="true"><%= data.partials.UnMute %></button>
-        <button class="schnack-action" data-target="notification" data-class="setting" data-action="false"><%= data.partials.Mute %></button>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Schnack Embed</title>
+    <link rel="stylesheet" href="client.css">
+</head>
+<body>
+    <div class="schnack-container">
+        <textarea id="schnack-comment" placeholder="Join the discussion..."></textarea>
+        <button type="submit" id="schnack-submit">Post comment</button>
     </div>
-    <% } %>
-<div class="schnack-login-status">
-    <%= data.partials.LoginStatus.replace('%USER%', data.user.name) %>
-</div>
-<div class="schnack-above">
-    <div class="schnack-form">
-        <textarea class="schnack-body" placeholder="<%= data.partials.PostComment %>"></textarea>
-        <blockquote class="schnack-body" style="display:none"></blockquote>
-        <br>
-        <button class="schnack-preview"><%= data.partials.Preview %></button>
-        <button style="display:none" class="schnack-write"><%= data.partials.Edit %></button>&nbsp;
-        <button class="schnack-send-comment schnack-button"><%= data.partials.SendComment %></button>&nbsp;
-        <button class="schnack-cancel-reply" style="display:none"><%= data.partials.Cancel %></button>
-    </div>
-</div>
-<% } else { %>
-<div class="schnack-signin">
-<% if (!data.auth.length) { %>
-<%= data.partials.NoAuthProviders %>
-<% } else { %>
-<%= data.partials.SignInVia %><br>
-<% data.auth.forEach((provider, i) => {  %>
-    <%= i ? data.partials.Or : '' %><button class="schnack-signin-<%= provider.id %>"><i class="icon schnack-icon-<%= provider.id %>"></i> <%= provider.name %></button>
-<% }) %>
-<% } %>
-<% } %>
-</div>
-<%
-const comments = [];
-data.replies = {};
-data.comments.forEach((comment) => {
-    if (comment.reply_to) {
-        if (!data.replies[comment.reply_to]) data.replies[comment.reply_to] = [];
-        data.replies[comment.reply_to].push(comment);
-    } else {
-        comments.push(comment);
-    }
-});
-data.comments = comments;
-%>
-<%= data.comments_tpl(data) %>
-<style type="text/css">
-.schnack-action > * { pointer-events: none; }
-</style>
+    <script src="client.js"></script>
+</body>
+</html>
