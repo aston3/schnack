@@ -1,228 +1,286 @@
-import fetch from 'unfetch';
-import schnack_tpl from './schnack.jst.html';
-import comments_tpl from './comments.jst.html';
+/* global Schnack, DOMPurify */
 
-const $ = sel => document.querySelector(sel);
-const $$ = sel => document.querySelectorAll(sel);
-
-export default class Schnack {
-    constructor(options) {
+window.Schnack = {
+    init: function(options) {
         this.options = options;
-        this.options.endpoint = `${options.host}/comments/${options.slug}`;
-        this.initialized = false;
-        this.firstLoad = true;
+        this.authenticated = false;
+        this.user = null;
+        this.page = window.location.pathname;
+        this.csrfToken = this.generateCSRFToken();
+        this.getComments();
+        this.ready();
+        this.initDrafts();
+        this.initMarkdownPreview();
+    },
 
-        const url = new URL(options.host);
+    generateCSRFToken: function() {
+        const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        document.cookie = `schnack_csrf=${token}; SameSite=Strict; path=/`;
+        return token;
+    },
 
-        if (url.hostname !== 'localhost') {
-            document.domain = url.hostname
-                .split('.')
-                .slice(1)
-                .join('.');
-        }
+    ready: function() {
+        const self = this;
+        const form = document.querySelector('.schnack-form-comment');
+        const textarea = document.querySelector('.schnack-comment');
+        const charCount = document.querySelector('.char-count');
+        const preview = document.querySelector('.schnack-preview');
+        const maxLength = 2000;
 
-        this.refresh();
-    }
+        // Character counter
+        textarea.addEventListener('input', function() {
+            const length = this.value.length;
+            charCount.textContent = `${length}/${maxLength}`;
+            charCount.className = `char-count ${length > maxLength ? 'char-count-error' : ''}`;
+            localStorage.setItem('schnack_draft', this.value);
+        });
 
-    refresh() {
-        const { target, slug, host, endpoint, partials } = this.options;
-
-        fetch(endpoint, {
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json'
+        // Form submission
+        form.addEventListener('submit', function(ev) {
+            ev.preventDefault();
+            if (!self.authenticated) return self.login();
+            if (textarea.value.length > maxLength) {
+                return self.notify('error', 'Comment exceeds maximum length');
             }
-        })
-            .then(r => r.json())
-            .then(data => {
-                data.comments_tpl = comments_tpl;
-                data.partials = partials;
-                $(target).innerHTML = schnack_tpl(data);
-                // console.log('data', data);
+            
+            self.notify('pending');
+            const formData = new FormData(form);
+            formData.append('url', self.page);
+            formData.append('_csrf', self.csrfToken);
 
-                const above = $(`${target} div.schnack-above`);
-                const form = $(`${target} div.schnack-form`);
-                const textarea = $(`${target} textarea.schnack-body`);
-                const preview = $(`${target} .schnack-form blockquote.schnack-body`);
-
-                const draft = window.localStorage.getItem(`schnack-draft-${slug}`);
-                if (draft && textarea) textarea.value = draft;
-
-                const postBtn = $(target + ' .schnack-button');
-                const previewBtn = $(target + ' .schnack-preview');
-                const writeBtn = $(target + ' .schnack-write');
-                const cancelReplyBtn = $(target + ' .schnack-cancel-reply');
-                const replyBtns = $$(target + ' .schnack-reply');
-
-                if (postBtn) {
-                    postBtn.addEventListener('click', d => {
-                        const body = textarea.value;
-                        fetch(endpoint, {
-                            credentials: 'include',
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                comment: body,
-                                replyTo: form.dataset.reply
-                            })
-                        })
-                            .then(r => r.json())
-                            .then(res => {
-                                textarea.value = '';
-                                window.localStorage.setItem(
-                                    `schnack-draft-${slug}`,
-                                    textarea.value
-                                );
-                                if (res.id) {
-                                    this.firstLoad = true;
-                                    window.location.hash = '#comment-' + res.id;
-                                }
-                                this.refresh();
-                            });
-                    });
-
-                    previewBtn.addEventListener('click', d => {
-                        const body = textarea.value;
-                        textarea.style.display = 'none';
-                        previewBtn.style.display = 'none';
-                        preview.style.display = 'block';
-                        writeBtn.style.display = 'inline';
-                        fetch(`${host}/markdown`, {
-                            credentials: 'include',
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                comment: body
-                            })
-                        })
-                            .then(r => r.json())
-                            .then(res => {
-                                preview.innerHTML = res.html;
-                                // refresh();
-                            });
-                    });
-
-                    writeBtn.addEventListener('click', d => {
-                        textarea.style.display = 'inline';
-                        previewBtn.style.display = 'inline';
-                        preview.style.display = 'none';
-                        writeBtn.style.display = 'none';
-                    });
-
-                    textarea.addEventListener('keyup', () => {
-                        window.localStorage.setItem(`schnack-draft-${slug}`, textarea.value);
-                    });
-
-                    replyBtns.forEach(btn => {
-                        btn.addEventListener('click', () => {
-                            form.dataset.reply = btn.dataset.replyTo;
-                            cancelReplyBtn.style.display = 'inline-block';
-                            btn.parentElement.appendChild(form);
-                        });
-                    });
-
-                    cancelReplyBtn.addEventListener('click', () => {
-                        above.appendChild(form);
-                        delete form.dataset.reply;
-                        cancelReplyBtn.style.display = 'none';
-                    });
-                }
-                if (data.user) {
-                    const signout = $('a.schnack-signout');
-                    if (signout)
-                        signout.addEventListener('click', e => {
-                            e.preventDefault();
-                            fetch(`${host}/signout`, {
-                                credentials: 'include',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                }
-                            }).then(() => this.refresh());
-                        });
+            fetch(self.options.post, {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            })
+            .then(response => {
+                if (response.ok) {
+                    self.notify('ok', 'Comment posted successfully');
+                    form.reset();
+                    localStorage.removeItem('schnack_draft');
+                    charCount.textContent = `0/${maxLength}`;
+                    self.getComments();
                 } else {
-                    data.auth.forEach(provider => {
-                        const btn = $(target + ' .schnack-signin-' + provider.id);
-                        if (btn)
-                            btn.addEventListener('click', d => {
-                                const signin = (provider_domain = '') => {
-                                    let windowRef = window.open(
-                                        `${host}/auth/${provider.id}` +
-                                            (provider_domain ? `/d/${provider_domain}` : ''),
-                                        provider.name + ' Sign-In',
-                                        'resizable,scrollbars,status,width=600,height=500'
-                                    );
-                                    window.__schnack_wait_for_oauth = () => {
-                                        windowRef.close();
-                                        this.refresh();
-                                    };
-                                };
-                                if (provider.id === 'mastodon') {
-                                    // we need to ask the user what instance they want to sign on
-                                    const masto_domain = window.prompt(
-                                        'Please enter the domain name of the Mastodon instance you want to sign in with:',
-                                        'mastodon.social'
-                                    );
-                                    // test if the instance is correct
-                                    fetch(`https://${masto_domain}/api/v1/instance`)
-                                        .then(r => r.json())
-                                        .then(res => {
-                                            if (res.uri === masto_domain) {
-                                                // instance seems to be fine!
-                                                signin(masto_domain);
-                                            } else {
-                                                window.alert(
-                                                    `We could not find a Mastodon instance at "${masto_domain}". Please try again.`
-                                                );
-                                            }
-                                        })
-                                        .catch(err => {
-                                            console.error(err);
-                                            window.alert(
-                                                `We could not find a Mastodon instance at "${masto_domain}". Please try again.`
-                                            );
-                                        });
-                                } else {
-                                    signin();
-                                }
-                            });
-                    });
+                    throw new Error('Server error');
                 }
+            })
+            .catch(err => {
+                self.notify('error', 'Error posting comment');
+                console.error(err);
+            });
+        });
 
-                if (data.user && data.user.admin) {
-                    if (!this.initialized) {
-                        const push = document.createElement('script');
-                        push.setAttribute('src', `${host}/push.js`);
-                        document.head.appendChild(push);
-                        this.initialized = true;
-                    }
+        // Initialize auth status display
+        this.updateAuthStatus();
+    },
 
-                    const action = evt => {
-                        const btn = evt.target;
-                        const data = btn.dataset;
-                        fetch(`${host}/${data.class}/${data.target}/${data.action}`, {
-                            credentials: 'include',
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: ''
-                        }).then(() => this.refresh());
-                    };
-                    document.querySelectorAll('.schnack-action').forEach(btn => {
-                        btn.addEventListener('click', action);
-                    });
-                }
+    initDrafts: function() {
+        const draft = localStorage.getItem('schnack_draft');
+        if (draft) {
+            const textarea = document.querySelector('.schnack-comment');
+            textarea.value = draft;
+            textarea.dispatchEvent(new Event('input'));
+        }
+    },
 
-                if (this.firstLoad && window.location.hash.match(/^#comment-\d+$/)) {
-                    const hl = document.querySelector(window.location.hash);
-                    hl.scrollIntoView();
-                    hl.classList.add('schnack-highlight');
-                    this.firstLoad = false;
+    initMarkdownPreview: function() {
+        const container = document.createElement('div');
+        container.className = 'schnack-preview';
+        document.querySelector('.schnack-form').appendChild(container);
+        
+        document.querySelector('.schnack-preview-toggle').addEventListener('click', function() {
+            const textarea = document.querySelector('.schnack-comment');
+            const preview = document.querySelector('.schnack-preview');
+            if (this.dataset.mode === 'edit') {
+                this.dataset.mode = 'preview';
+                this.textContent = this.dataset.editText;
+                preview.innerHTML = DOMPurify.sanitize(marked.parse(textarea.value));
+                preview.style.display = 'block';
+                textarea.style.display = 'none';
+            } else {
+                this.dataset.mode = 'edit';
+                this.textContent = this.dataset.previewText;
+                preview.style.display = 'none';
+                textarea.style.display = 'block';
+            }
+        });
+    },
+
+    login: function() {
+        const self = this;
+        const width = 600;
+        const height = 600;
+        const left = (screen.width/2)-(width/2);
+        const top = (screen.height/2)-(height/2);
+        
+        const authWindow = window.open(
+            this.options.login,
+            'schnack_auth',
+            `toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=no, resizable=no, copyhistory=no, width=${width}, height=${height}, top=${top}, left=${left}`
+        );
+
+        const messageHandler = function(ev) {
+            if (ev.origin !== new URL(self.options.host).origin) return;
+            if (ev.data.schnack_user) {
+                self.authenticated = true;
+                self.user = ev.data.schnack_user;
+                self.updateAuthStatus();
+                self.notify('ok', `Welcome ${self.user.name}!`);
+                self.getComments();
+                window.removeEventListener('message', messageHandler);
+            }
+        };
+
+        window.addEventListener('message', messageHandler, false);
+    },
+
+    updateAuthStatus: function() {
+        const statusEl = document.querySelector('.schnack-auth-status');
+        if (!statusEl) return;
+        
+        if (this.authenticated && this.user) {
+            statusEl.innerHTML = this.options.partials.LoginStatus
+                .replace('%USER%', this.user.name)
+                .replace('%DISPLAY_NAME%', this.user.display_name);
+        } else {
+            statusEl.innerHTML = this.options.partials.SignInVia;
+        }
+    },
+
+    notify: function(type, message) {
+        const notification = document.querySelector(`.schnack-notification-${type}`);
+        notification.textContent = message || notification.dataset.defaultText;
+        notification.style.display = 'block';
+        notification.setAttribute('aria-live', 'polite');
+        
+        setTimeout(() => {
+            notification.style.display = 'none';
+        }, 3000);
+        
+        // Focus for accessibility
+        notification.focus();
+    },
+
+    getComments: function() {
+        const self = this;
+        fetch(`${this.options.get}?url=${encodeURIComponent(this.page)}`, {
+            credentials: 'include'
+        })
+        .then(response => response.json())
+        .then(comments => {
+            self.renderComments(comments);
+        })
+        .catch(err => {
+            self.notify('error', 'Failed to load comments');
+            console.error(err);
+        });
+    },
+
+    renderComments: function(comments) {
+        const container = document.querySelector('.schnack-comments');
+        container.innerHTML = '';
+        
+        const buildComment = (comment, depth = 0) => {
+            const commentEl = document.createElement('div');
+            commentEl.className = `schnack-comment ${depth > 0 ? 'schnack-reply' : ''}`;
+            commentEl.innerHTML = `
+                <div class="schnack-comment-header">
+                    <strong>${DOMPurify.sanitize(comment.user.name)}</strong>
+                    <span>${new Date(comment.date).toLocaleString()}</span>
+                    ${this.user && this.user.admin ? `
+                        <button class="schnack-action" data-action="approve" data-id="${comment.id}">
+                            <i class="icon schnack-icon-approve"></i>
+                        </button>
+                        <button class="schnack-action" data-action="reject" data-id="${comment.id}">
+                            <i class="icon schnack-icon-reject"></i>
+                        </button>
+                    ` : ''}
+                </div>
+                <div class="schnack-comment-body">${DOMPurify.sanitize(marked.parse(comment.text))}</div>
+                ${comment.replies && comment.replies.length ? `
+                    <div class="schnack-replies">
+                        ${comment.replies.map(reply => buildComment(reply, depth + 1)).join('')}
+                    </div>
+                ` : ''}
+                ${this.authenticated ? `
+                    <button class="schnack-reply" data-reply-to="${comment.id}">
+                        ${this.options.partials.Reply}
+                    </button>
+                ` : ''}
+            `;
+            return commentEl.outerHTML;
+        };
+
+        // Nest replies
+        const nestComments = items => {
+            const tree = [];
+            const mapped = {};
+            
+            items.forEach(item => {
+                mapped[item.id] = {...item, replies: []};
+            });
+
+            items.forEach(item => {
+                if (item.reply_to && mapped[item.reply_to]) {
+                    mapped[item.reply_to].replies.push(mapped[item.id]);
+                } else {
+                    tree.push(mapped[item.id]);
                 }
             });
+
+            return tree;
+        };
+
+        container.innerHTML = nestComments(comments).map(buildComment).join('');
+        this.addCommentEventListeners();
+    },
+
+    addCommentEventListeners: function() {
+        document.querySelectorAll('[data-action="approve"], [data-action="reject"]').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const action = e.target.closest('button').dataset.action;
+                const id = e.target.closest('button').dataset.id;
+                this.moderateComment(id, action);
+            });
+        });
+
+        document.querySelectorAll('.schnack-reply').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const replyTo = e.target.closest('button').dataset.replyTo;
+                this.startReply(replyTo);
+            });
+        });
+    },
+
+    moderateComment: function(id, action) {
+        fetch(`${this.options.host}/comment/${id}/${action}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': this.csrfToken
+            },
+            credentials: 'include'
+        })
+        .then(response => {
+            if (response.ok) {
+                this.notify('ok', `Comment ${action}d successfully`);
+                this.getComments();
+            } else {
+                throw new Error('Moderation failed');
+            }
+        })
+        .catch(err => {
+            this.notify('error', `Error ${action}ing comment`);
+            console.error(err);
+        });
+    },
+
+    startReply: function(replyToId) {
+        const textarea = document.querySelector('.schnack-comment');
+        const user = document.querySelector(`[data-id="${replyToId}] .schnack-comment-header strong`).textContent;
+        textarea.value = `@${user} `;
+        textarea.focus();
+        localStorage.setItem('schnack_draft', textarea.value);
+        textarea.dispatchEvent(new Event('input'));
     }
-}
+};

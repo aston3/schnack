@@ -1,50 +1,28 @@
-<% if (data.user) { %>
-    <% if (data.user.admin) { %>
-    <div class="schnack-settings">
-        <button class="schnack-action" data-target="notification" data-class="setting" data-action="true"><%= data.partials.UnMute %></button>
-        <button class="schnack-action" data-target="notification" data-class="setting" data-action="false"><%= data.partials.Mute %></button>
-    </div>
-    <% } %>
-<div class="schnack-login-status">
-    <%= data.partials.LoginStatus.replace('%USER%', data.user.name) %>
-</div>
-<div class="schnack-above">
-    <div class="schnack-form">
-        <textarea class="schnack-body" placeholder="<%= data.partials.PostComment %>"></textarea>
-        <blockquote class="schnack-body" style="display:none"></blockquote>
-        <br>
-        <button class="schnack-preview"><%= data.partials.Preview %></button>
-        <button style="display:none" class="schnack-write"><%= data.partials.Edit %></button>&nbsp;
-        <button class="schnack-send-comment schnack-button"><%= data.partials.SendComment %></button>&nbsp;
-        <button class="schnack-cancel-reply" style="display:none"><%= data.partials.Cancel %></button>
-    </div>
-</div>
-<% } else { %>
-<div class="schnack-signin">
-<% if (!data.auth.length) { %>
-<%= data.partials.NoAuthProviders %>
-<% } else { %>
-<%= data.partials.SignInVia %><br>
-<% data.auth.forEach((provider, i) => {  %>
-    <%= i ? data.partials.Or : '' %><button class="schnack-signin-<%= provider.id %>"><i class="icon schnack-icon-<%= provider.id %>"></i> <%= provider.name %></button>
-<% }) %>
-<% } %>
-<% } %>
-</div>
-<%
-const comments = [];
-data.replies = {};
-data.comments.forEach((comment) => {
-    if (comment.reply_to) {
-        if (!data.replies[comment.reply_to]) data.replies[comment.reply_to] = [];
-        data.replies[comment.reply_to].push(comment);
-    } else {
-        comments.push(comment);
-    }
-});
-data.comments = comments;
-%>
-<%= data.comments_tpl(data) %>
-<style type="text/css">
-.schnack-action > * { pointer-events: none; }
-</style>
+&lt;div class=&quot;schnack&quot;&gt;
+    &lt;div class=&quot;schnack-form&quot;&gt;
+        &lt;div class=&quot;schnack-head&quot;&gt;
+            &lt;div class=&quot;schnack-title&quot;&gt;{{#_}}comments{{/_}}&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;form class=&quot;schnack-form-comment&quot; method=&quot;POST&quot;&gt;
+            &lt;textarea class=&quot;schnack-comment&quot; name=&quot;text&quot; placeholder=&quot;{{#_}}write a comment...{{/_}}&quot; required&gt;&lt;/textarea&gt;
+            &lt;span class=&quot;char-count&quot;&gt;0&lt;/span&gt;
+            &lt;p&gt;
+                &lt;button type=&quot;submit&quot; class=&quot;schnack-action&quot;&gt;{{#_}}send{{/_}}&lt;/button&gt;
+            &lt;/p&gt;
+        &lt;/form&gt;
+        &lt;div class=&quot;schnack-notification schnack-notification-ok&quot;&gt;{{#_}}Your comment has been posted.{{/_}}&lt;/div&gt;
+        &lt;div class=&quot;schnack-notification schnack-notification-error&quot;&gt;{{#_}}An error occurred while posting your comment.{{/_}}&lt;/div&gt;
+        &lt;div class=&quot;schnack-notification schnack-notification-pending&quot;&gt;{{#_}}Posting comment...{{/_}}&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;schnack-comments&quot;&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.char-count {
+    display: block;
+    color: #666;
+    font-size: 0.8em;
+    text-align: right;
+    margin-top: -15px;
+    margin-bottom: 10px;
+}
+&lt;/style&gt;
