@@ -29,4 +29,20 @@ describe('Schnack CSS', () => {
         expect(avatarRule.style.borderRadius).to.equal('50%');
         expect(avatarRule.style.objectFit).to.equal('cover');
     });
+
+    it('should have existing styles', () => {
+        const style = document.styleSheets[0];
+        let existingRule = null;
+
+        for (let i = 0; i < style.cssRules.length; i++) {
+            if (style.cssRules[i].selectorText === '.schnack-comments') {
+                existingRule = style.cssRules[i];
+                break;
+            }
+        }
+
+        expect(existingRule).to.not.be.null;
+        expect(existingRule.style.margin).to.equal('1em 0');
+        expect(existingRule.style.padding).to.equal('0');
+    });
 });
